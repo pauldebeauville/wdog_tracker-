@@ -30,8 +30,6 @@ try {
 
 // --- DEBUG TELEGRAM ENV ---
 console.log("[DEBUG] Telegram token suffix =", (process.env.TELEGRAM_TOKEN || "").slice(-6));
-console.log("[DEBUG] .env path =", require("path").resolve(".env"));
-
 
 // =============== CONFIG ===================
 const TOP_WALLET = "BFFPkReNnS5hayiVu1iwkaQgCYxoK7sCtZ17J6V4uUpH";

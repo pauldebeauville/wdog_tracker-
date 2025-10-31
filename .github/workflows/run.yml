@@ -2,8 +2,9 @@ name: WDOG watcher
 
 on:
   schedule:
-    - cron: "*/30 * * * *"   # toutes les 30 min
+    - cron: "*/30 * * * *"
   workflow_dispatch:
+
 
 jobs:
   run:

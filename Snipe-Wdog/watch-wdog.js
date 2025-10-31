@@ -1,35 +1,22 @@
 // WDOG Watcher — v6 (multi-tokens + SOL native tracking + improved alerts)
 // Node 18+ (fetch natif). Dépendances: dotenv, express, @solana/web3.js
 
+// ---- Chargement .env : local (Replit) OU Secrets GitHub (CI) ----
 const fs = require("fs");
 const path = require("path");
 
-// ✅ Charge le .env local s’il existe (Replit/local), sinon utilise les secrets GitHub
 const envPath = path.join(__dirname, ".env");
+
 if (fs.existsSync(envPath)) {
+  // mode local : on charge le .env
   require("dotenv").config({ path: envPath, override: true });
-  console.log("[DEBUG] Using local .env:", envPath);
+  console.log("[INFO] Using local .env:", envPath);
 } else {
+  // mode CI : PAS de .env local -> on utilise les GitHub Secrets
   console.log("[INFO] No local .env file (CI mode). Using GitHub Secrets.");
 }
 
-// Debug optionnel
-console.log("[DEBUG] Telegram token suffix =", (process.env.TELEGRAM_TOKEN || "").slice(-6));
-
-const express = require("express");
-const { Connection, PublicKey } = require("@solana/web3.js");
-
-try {
-  const content = require("fs").readFileSync(require("path").resolve(".env"), "utf8");
-  console.log("\n========== .ENV CONTENT DETECTED ==========\n");
-  console.log(content);
-  console.log("===========================================\n");
-} catch (err) {
-  console.log("❌ No .env file found at expected path:", err.message);
-}
-
-// --- DEBUG TELEGRAM ENV ---
-console.log("[DEBUG] Telegram token suffix =", (process.env.TELEGRAM_TOKEN || "").slice(-6));
+// IMPORTANT : ne JAMAIS faire de path.resolve('.env') ou de try/catch qui log l’erreur.
 
 // =============== CONFIG ===================
 const TOP_WALLET = "BFFPkReNnS5hayiVu1iwkaQgCYxoK7sCtZ17J6V4uUpH";

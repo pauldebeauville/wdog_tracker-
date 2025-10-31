@@ -7,6 +7,11 @@ const path = require("path");
 // 👇 forcer dotenv à charger le .env du dossier courant (pas celui de workspace)
 const envPath = path.join(__dirname, ".env");
 require("dotenv").config({ path: envPath, override: true });
+try {
+  require("dotenv").config();
+} catch (e) {
+  console.log("[INFO] No local .env file (GitHub Actions mode)");
+}
 
 console.log("[DEBUG] Using .env:", envPath);
 console.log("[DEBUG] Telegram token suffix =", (process.env.TELEGRAM_TOKEN || "").slice(-6));

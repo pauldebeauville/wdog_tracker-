@@ -1,4 +1,4 @@
-name: WDOG Top Wallet Watch
+name: WDOG watcher
 
 on:
   schedule:
@@ -11,9 +11,10 @@ jobs:
     permissions:
       contents: write
 
+    # 👉 Tout s'exécute dans le dossier qui contient package.json + watch-wdog.js
     defaults:
       run:
-        working-directory: Snipe-Wdog   # <-- mets ici le dossier qui contient package.json + watch-wdog-top.js
+        working-directory: Snipe-Wdog
 
     steps:
       - uses: actions/checkout@v4
@@ -24,7 +25,12 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Check secrets
+      - name: Show workspace (debug)
+        run: |
+          pwd
+          ls -la
+
+      - name: Check required secrets
         run: |
           test -n "${{ secrets.SOLANA_RPC_URL }}"      || (echo "Missing SOLANA_RPC_URL" && exit 1)
           test -n "${{ secrets.WDOG_MINT }}"           || (echo "Missing WDOG_MINT" && exit 1)
@@ -32,9 +38,10 @@ jobs:
           test -n "${{ secrets.TELEGRAM_BOT_TOKEN }}"  || (echo "Missing TELEGRAM_BOT_TOKEN" && exit 1)
           test -n "${{ secrets.TELEGRAM_CHAT_ID }}"    || (echo "Missing TELEGRAM_CHAT_ID" && exit 1)
 
-      - name: Install deps
+      - name: Install dependencies
         run: npm install
 
+      # 👇 C'EST ICI — l'étape "Run watcher"
       - name: Run watcher
         env:
           SOLANA_RPC_URL: ${{ secrets.SOLANA_RPC_URL }}
@@ -43,20 +50,21 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           NODE_OPTIONS: --unhandled-rejections=strict
-        run: node watch-wdog-top.js
+        run: node watch-wdog.js
 
-      - name: Commit balances_top.json if changed
+      # Commit le fichier d'état s'il a changé (peu importe son nom)
+      - name: Commit balances file if changed
         run: |
-          if [ -f balances_top.json ]; then
+          FILE=""
+          if [ -f balances_top.json ]; then FILE="balances_top.json"; fi
+          if [ -f balances.json ]; then FILE="balances.json"; fi
+          if [ -n "$FILE" ]; then
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add balances_top.json
+            git add "$FILE"
             if ! git diff --cached --quiet; then
-              git commit -m "chore: update balances_top.json"
+              git commit -m "chore: update $FILE"
               git push
             else
               echo "No changes to commit."
             fi
-          else
-            echo "balances_top.json missing after run"
-          fi

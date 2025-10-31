@@ -1,20 +1,18 @@
 {
-  "name": "snipe-wdog",
+  "name": "wdog-watcher",
   "version": "1.0.0",
-  "description": "",
+  "description": "Watcher WDOG Solana avec alertes Telegram",
   "main": "watch-wdog.js",
+  "type": "module",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
     "start": "node watch-wdog.js"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "type": "commonjs",
+  "engines": {
+    "node": ">=20"
+  },
   "dependencies": {
-    "@solana/web3.js": "^1.98.4",
-    "dotenv": "^17.2.3",
-    "express": "^5.1.0",
-    "node-fetch": "^2.7.0"
+    "@solana/web3.js": "^1.95.3",
+    "dotenv": "^16.4.5",
+    "node-fetch": "^3.3.2"
   }
 }

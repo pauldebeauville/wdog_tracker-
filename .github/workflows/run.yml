@@ -2,7 +2,7 @@ name: WDOG Multi-Tracker Bot
 
 on:
   schedule:
-    - cron: "*/5 * * * *" # toutes les 5 minutes
+    - cron: "0 */2 * * *"
   workflow_dispatch:
 
 jobs:

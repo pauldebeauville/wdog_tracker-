@@ -1,7 +1,7 @@
 {
   "name": "wdog-watcher",
-  "version": "1.0.0",
-  "description": "Watcher WDOG Solana avec alertes Telegram",
+  "version": "1.2.0",
+  "description": "Watcher WDOG Solana — multi-wallet, alerts only on change, updates balances.json in repo",
   "main": "watch-wdog.js",
   "type": "module",
   "scripts": {

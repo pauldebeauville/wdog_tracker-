@@ -29,14 +29,14 @@ jobs:
           ls -la
           node -v
 
-      - name: Install dependencies
-        # utilise le lock si présent, sinon npm install
-        run: |
-          if [ -f package-lock.json ]; then
-            npm ci
-          else
-            npm install
-          fi
+    - name: Install dependencies
+      # utilise le lock si présent, sinon npm install
+      run: |
+        if [ -f package-lock.json ]; then
+          npm ci
+        else
+          npm install
+        fi
 
     - name: Send Telegram test ping
       run: |

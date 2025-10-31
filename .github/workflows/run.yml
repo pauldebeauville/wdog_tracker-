@@ -9,37 +9,28 @@ jobs:
   run:
     runs-on: ubuntu-latest
     permissions:
-      contents: write   # nécessaire pour push via GITHUB_TOKEN
+      contents: write
 
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
-          # cache: 'npm'  # réactive après avoir commité package-lock.json
 
-      - name: Check required secrets
+      - name: Check secrets
         run: |
-          test -n "${{ secrets.SOLANA_RPC_URL }}"      || (echo "Missing SOLANA_RPC_URL" && exit 1)
           test -n "${{ secrets.WDOG_MINT }}"           || (echo "Missing WDOG_MINT" && exit 1)
-          test -n "${{ secrets.WDOG_WALLETS }}"        || (echo "Missing WDOG_WALLETS" && exit 1)
           test -n "${{ secrets.TELEGRAM_BOT_TOKEN }}"  || (echo "Missing TELEGRAM_BOT_TOKEN" && exit 1)
           test -n "${{ secrets.TELEGRAM_CHAT_ID }}"    || (echo "Missing TELEGRAM_CHAT_ID" && exit 1)
 
       - name: Install deps
         run: npm install
 
-      - name: Run watcher
+      - name: Run WDOG Watcher
         env:
           SOLANA_RPC_URL: ${{ secrets.SOLANA_RPC_URL }}
           WDOG_MINT: ${{ secrets.WDOG_MINT }}
-          WDOG_WALLETS: ${{ secrets.WDOG_WALLETS }}     # ex: "addr1,addr2,addr3"
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}      # autorise le commit/push depuis le script
           NODE_OPTIONS: --unhandled-rejections=strict
-        run: |
-          node watch-wdog.js
+        run: node watch-wdog.js

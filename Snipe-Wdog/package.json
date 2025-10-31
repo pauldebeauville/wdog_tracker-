@@ -1,15 +1,13 @@
 {
-  "name": "wdog-watcher",
-  "version": "1.3.0",
-  "description": "Watcher WDOG Solana — multi-wallet incluant top inflows et top holder",
-  "main": "watch-wdog.js",
+  "name": "wdog-topwatch",
+  "version": "1.0.0",
+  "description": "Alerte dès qu'il y a du WDOG qui passe par le TOP wallet",
   "type": "module",
+  "main": "watch-wdog-top.js",
   "scripts": {
-    "start": "node watch-wdog.js"
+    "start": "node watch-wdog-top.js"
   },
-  "engines": {
-    "node": ">=20"
-  },
+  "engines": { "node": ">=20" },
   "dependencies": {
     "@solana/web3.js": "^1.95.3",
     "dotenv": "^16.4.5",

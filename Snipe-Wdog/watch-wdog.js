@@ -1,379 +1,220 @@
-// watch-wdog.js — v4.1 (WDOG balance display + multi-token tracking)
-// Node 18+ (fetch natif). Dépendances: dotenv, express, @solana/web3.js
+// WDOG Multi-Tracker — full JS (Node 18+)
+// Déps: @solana/web3.js
+// Envs: TELEGRAM_TOKEN, TELEGRAM_CHAT_ID, RPC_ENDPOINT, WDOG_MINT, TOP_WALLET, WATCH_WALLETS
 
-require("dotenv").config();
-const fs = require("fs");
-const path = require("path");
-const express = require("express");
-const { Connection, PublicKey, LAMPORTS_PER_SOL } = require("@solana/web3.js");
+// ---------- Imports & setup ----------
+const { Connection, PublicKey } = require("@solana/web3.js");
 
-// ===================== CONFIG =====================
-const TOP_WALLET = "BFFPkReNnS5hayiVu1iwkaQgCYxoK7sCtZ17J6V4uUpH";
-const WATCH_WALLETS = [
-  "2Hm2PRSBARRDdz7FRuF9k4esLRjbhyjymD3KioC3ji2s",
-  "DQ5JWbJyWdJeyBxZuuyu36sUBud6L6wo3aN1QC1bRmsR",
-  "AaZkwhkiDStDcgrU37XAj9fpNLrD8Erz5PNkdm4k5hjy",
-  "GhPCVjqHpX7xFwP4WYBzsdkqT4gnBFcVEcxi3oUPYJny",
-  "BY4StcU9Y2BpgH8quZzorg31EGE4L1rjomN8FNsCBEcx",
-  "6akCMEAUGD6ZjC2kaMZzhAwNMw46iQA4S5TvDPTHQAG2",
-  "EPyhiYD5RpHsQJ5r9dbQet3i6WWMzTwZSVVHtfAP4Wxg",
-  "joDb79syHkFU371sG7EzPp8nw6zFKWCmTuQ63wx3WoX",
-  "7WenWCJHqkARsWALEK6bGmLZH7EGBVEVVNM2s4so3Kjm",
-  "iGdFcQoyR2MwbXMHQskhmNsqddZ6rinsipHc4TNSdwu",
-];
+// Chargement .env en local (ne gêne pas GitHub Actions)
+try { require("dotenv").config(); } catch (_) {}
 
-const WDOG_MINT = process.env.WDOG_MINT || "";
-const ONLY_TOP_OUT = process.env.ONLY_TOP_OUT === "0" ? false : true;
-const RECEIVER_SCOPE = process.env.RECEIVER_SCOPE || "watch_or_cex";
-const MIN_WDOG = Number(process.env.MIN_WDOG || 10000);
-
-const TELEGRAM_TOKEN = process.env.TELEGRAM_TOKEN || "";
+// ---------- Environnement ----------
+const TELEGRAM_TOKEN   = process.env.TELEGRAM_TOKEN || "";
 const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID || "";
-const PING_URL = process.env.PING_URL || "";
+const RPC_ENDPOINT     = process.env.RPC_ENDPOINT || "https://api.mainnet-beta.solana.com";
 
-const RPC_POOL = [
-  process.env.RPC_ENDPOINT || "",
-  "https://rpc.ankr.com/solana",
-  "https://solana-rpc.publicnode.com",
-  "https://api.mainnet-beta.solana.com",
-].filter(Boolean);
+const WDOG_MINT_STR    = process.env.WDOG_MINT || "GYKmdfCumZvrqcfh1Gg57B9juzSRij3LBluwv79rpump"; // ajuste si besoin
+const WDOG_MINT        = new PublicKey(WDOG_MINT_STR);
 
-const POLL_INTERVAL_MS = Number(process.env.POLL_INTERVAL_MS || 180000);
-const PER_ADDR_DELAY_MS = Number(process.env.PER_ADDR_DELAY_MS || 5000);
-const PAGE_LIMIT = 20;
-const MAX_PAGES = 3;
+const TOP_WALLET_STR   = process.env.TOP_WALLET || "BFFPkReNnS5hayiVu1iwkaQgCYxoK7sCtZ17J6V4uUpH";
+const TOP_WALLET       = new PublicKey(TOP_WALLET_STR);
 
-const WDOG_USD_ENV = process.env.WDOG_USD
-  ? Number(process.env.WDOG_USD)
-  : null;
+const WATCH_WALLETS_STR = (process.env.WATCH_WALLETS || "").trim();
+const WATCH_WALLETS     = WATCH_WALLETS_STR
+  ? WATCH_WALLETS_STR.split(",").map(s => s.trim()).filter(Boolean)
+  : [];
 
-const KNOWN_EXCHANGES = {
-  Kraken: [],
-  Bybit: [],
-  OKX: [],
-  Binance: [],
-  Coinbase: [],
-};
+// Liste des adresses à surveiller (string base58)
+const MONITORED = Array.from(new Set([TOP_WALLET_STR, ...WATCH_WALLETS]));
 
-// ================== INFRA & UTILS =================
-let rpcIndex = 0;
-let conn = new Connection(RPC_POOL[rpcIndex], "confirmed");
+const connection = new Connection(RPC_ENDPOINT, "confirmed");
 
-function rotateRPC() {
-  rpcIndex = (rpcIndex + 1) % RPC_POOL.length;
-  conn = new Connection(RPC_POOL[rpcIndex], "confirmed");
-  log(`[RPC] Switch to ${RPC_POOL[rpcIndex]}`);
-}
+// Curseurs : dernière signature vue par adresse (limite la redite)
+const cursors = {}; // { addrBase58: signature }
 
-function sleep(ms) {
-  return new Promise((r) => setTimeout(r, ms));
-}
-function jitter(ms) {
-  return ms + Math.floor(Math.random() * 400);
-}
-function log(...a) {
-  console.log(new Date().toISOString(), ...a);
-}
-
-// --- Helpers: lire le solde WDOG du top wallet ---
-async function getMintBalanceUi(ownerAddr, mintAddr) {
-  if (!ownerAddr || !mintAddr) return null;
-  try {
-    const resp = await conn.getParsedTokenAccountsByOwner(new PublicKey(ownerAddr), {
-      mint: new PublicKey(mintAddr),
-    });
-    let sum = 0;
-    for (const p of resp.value) {
-      const amt = p.account?.data?.parsed?.info?.tokenAmount?.uiAmount || 0;
-      sum += Number(amt);
-    }
-    return sum;
-  } catch (e) {
-    console.log("[RPC] getMintBalanceUi error:", e.message);
-    return null;
-  }
-}
+// ---------- Utils ----------
+function log(...a) { console.log(new Date().toISOString(), ...a); }
 
 async function telegramSend(text) {
   if (!TELEGRAM_TOKEN || !TELEGRAM_CHAT_ID) {
-    log("[TG] not configured:", text);
+    log("[TELEGRAM] non-configuré, message ignoré:", text);
     return;
   }
   const url = `https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`;
-  const body = {
+  const body = new URLSearchParams({
     chat_id: TELEGRAM_CHAT_ID,
     text,
-    parse_mode: "HTML",
-    disable_web_page_preview: true,
-  };
+    parse_mode: "Markdown"
+  });
+
+  const r = await fetch(url, { method: "POST", body });
+  if (!r.ok) {
+    const t = await r.text().catch(()=>"?");
+    log("[TELEGRAM] FAIL", r.status, t);
+  }
+}
+
+// convertit amount+decimals (string) en nombre "UI" (Number)
+function toUi(amountStr, decimals) {
   try {
-    await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-  } catch (e) {
-    log("[TG] send error:", e.message);
+    return Number(BigInt(amountStr)) / 10 ** decimals;
+  } catch {
+    return 0;
   }
 }
 
-// --- état signatures traitées ---
-const STATE_FILE = path.join(__dirname, "processed_signatures.json");
-let processed = [];
-try {
-  processed = JSON.parse(fs.readFileSync(STATE_FILE, "utf8"));
-  if (!Array.isArray(processed)) processed = [];
-} catch {
-  processed = [];
-}
-const PROCESSED_MAX = 50000;
-function rememberSig(sig) {
-  processed.push(sig);
-  if (processed.length > PROCESSED_MAX) processed = processed.slice(-PROCESSED_MAX);
-  fs.writeFileSync(STATE_FILE, JSON.stringify(processed));
-}
-function alreadySeen(sig) {
-  return processed.includes(sig);
+// ---------- Signatures: fetch par adresse ----------
+async function fetchNewSigsForAddress(addrBase58, limit = 20) {
+  const addr = new PublicKey(addrBase58);
+  const before = cursors[addrBase58];
+  const opts = before ? { before, limit } : { limit };
+
+  const sigInfos = await connection.getSignaturesForAddress(addr, opts);
+  if (sigInfos.length > 0) {
+    cursors[addrBase58] = sigInfos[0].signature; // le plus récent
+  }
+  return sigInfos.map(s => s.signature); // on retourne la liste de signatures (strings)
 }
 
-// --- curseurs par adresse ---
-const CURSOR_FILE = path.join(__dirname, "cursors.json");
-let cursors = {};
-try {
-  cursors = JSON.parse(fs.readFileSync(CURSOR_FILE, "utf8"));
-} catch {
-  cursors = {};
-}
-function saveCursors() {
-  fs.writeFileSync(CURSOR_FILE, JSON.stringify(cursors));
-}
-
-// --- fonctions de récupération RPC ---
-async function safeGetSignatures(pubkey, opts) {
-  let back = 500;
-  for (let i = 0; i < 4; i++) {
-    try {
-      return await conn.getSignaturesForAddress(pubkey, opts);
-    } catch (e) {
-      const s = String(e);
-      if (s.includes("429") || s.includes("rate")) {
-        log("429 on getSignaturesForAddress. Backoff", back, "ms");
-        await sleep(jitter(back));
-        back *= 2;
-        if (i >= 2) rotateRPC();
-      } else throw e;
-    }
-  }
-  return [];
-}
-
-async function safeGetTransaction(sig) {
-  let back = 500;
-  for (let i = 0; i < 4; i++) {
-    try {
-      return await conn.getTransaction(sig, { maxSupportedTransactionVersion: 0 });
-    } catch (e) {
-      const s = String(e);
-      if (s.includes("429") || s.includes("rate")) {
-        log("429 on getTransaction. Backoff", back, "ms");
-        await sleep(jitter(back));
-        back *= 2;
-        if (i >= 2) rotateRPC();
-      } else throw e;
-    }
-  }
-  return null;
-}
-
-function parseTokenDeltas(meta) {
-  const pre = meta?.preTokenBalances || [];
-  const post = meta?.postTokenBalances || [];
-  const map = new Map();
-  function k(mint, owner) {
-    return `${mint}:${owner || ""}`;
-  }
-  function add(side, arr) {
-    for (const b of arr) {
-      const key = k(b.mint, b.owner || "");
-      const prev = map.get(key) || {
-        mint: b.mint,
-        owner: b.owner || "",
-        pre: 0n,
-        post: 0n,
-        decimals: b.uiTokenAmount?.decimals ?? 0,
-      };
-      const amount = BigInt(b.uiTokenAmount?.amount ?? "0");
-      if (side === "pre") prev.pre = amount;
-      else prev.post = amount;
-      prev.decimals = b.uiTokenAmount?.decimals ?? prev.decimals ?? 0;
-      map.set(key, prev);
-    }
-  }
-  add("pre", pre);
-  add("post", post);
-  const deltas = [];
-  for (const v of map.values()) {
-    const diff = v.post - v.pre;
-    if (diff !== 0n) {
-      deltas.push({
-        mint: v.mint,
-        owner: v.owner,
-        diff,
-        decimals: v.decimals,
-      });
-    }
-  }
-  return deltas;
-}
-
-function toUi(diffBig, decimals) {
-  const d = BigInt(10) ** BigInt(decimals || 0);
-  return Number(diffBig) / Number(d);
-}
-
-// ===================== CORE =======================
-async function processSignature(sig, notify = true) {
-  if (alreadySeen(sig)) return;
-  const tx = await safeGetTransaction(sig);
-  if (!tx || !tx.transaction || !tx.transaction.message) {
-    rememberSig(sig);
-    return;
-  }
-
-  const meta = tx.meta;
-  const deltasAll = parseTokenDeltas(meta);
-  const deltas = WDOG_MINT
-    ? deltasAll.filter((d) => d.mint === WDOG_MINT)
-    : deltasAll;
-
-  const sum = {};
-  for (const d of deltas) {
-    const ui = toUi(d.diff, d.decimals);
-    sum[d.owner] = (sum[d.owner] || 0) + ui;
-  }
-
-  const topDelta = sum[TOP_WALLET] || 0;
-  if (ONLY_TOP_OUT && !(topDelta < 0)) {
-    rememberSig(sig);
-    return;
-  }
-  if (MIN_WDOG && Math.abs(topDelta) < MIN_WDOG) {
-    rememberSig(sig);
-    return;
-  }
-
-  const receivers = Object.entries(sum)
-    .filter(([o, v]) => v > 0 && o !== TOP_WALLET)
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 3);
-
-  const url = `https://solscan.io/tx/${sig}`;
-  const directionEmoji = topDelta < 0 ? "🔴" : "🟢";
-  const directionLabel = topDelta < 0 ? "OUT" : "IN";
-
-  const price = await getWDOGUsd();
-  const absTop = Math.abs(topDelta);
-  const usdTxt =
-    price && absTop
-      ? ` (~$${(absTop * price).toLocaleString(undefined, {
-          maximumFractionDigits: 2,
-        })})`
-      : "";
-
-  const lines = [];
-  lines.push(`${directionEmoji} <b>WDOG movement (${directionLabel})</b>`);
-  lines.push(`Sig: <code>${sig}</code>`);
-  lines.push(`🔗 ${url}`);
-  if (WDOG_MINT) lines.push(`Mint: <code>${WDOG_MINT}</code>`);
-  lines.push(
-    `Top holder delta: <b>${topDelta.toLocaleString()}</b> WDOG${usdTxt}`
+// ---------- Solde WDOG du top holder ----------
+async function getTopHolderWdogBalance() {
+  const resp = await connection.getTokenAccountsByOwner(
+    TOP_WALLET,
+    { mint: WDOG_MINT },
+    "confirmed"
   );
 
-  // --- afficher le solde restant du top wallet ---
-  if (WDOG_MINT) {
-    try {
-      const remaining = await getMintBalanceUi(TOP_WALLET, WDOG_MINT);
-      if (remaining !== null) {
-        const remUsd =
-          price && remaining
-            ? ` (~$${(remaining * price).toLocaleString(undefined, {
-                maximumFractionDigits: 2,
-              })})`
-            : "";
-        lines.push(
-          `Top holder remaining: <b>${remaining.toLocaleString()}</b> WDOG${remUsd}`
-        );
-      }
-    } catch (e) {
-      console.log("[WARN] could not fetch top holder remaining:", e.message);
-    }
+  let raw = 0n;
+  let decimals = 6; // défaut si manquant
+  for (const { account } of resp.value) {
+    const info = account.data.parsed.info;
+    raw      += BigInt(info.tokenAmount.amount);
+    decimals  = info.tokenAmount.decimals ?? decimals;
   }
-
-  if (receivers.length) {
-    lines.push(`Receivers (top):`);
-    for (const [recv, amt] of receivers) {
-      lines.push(`→ <code>${recv}</code> +${Math.round(amt).toLocaleString()} WDOG`);
-    }
-  }
-
-  const text = lines.join("\n");
-  log("[ALERT]", text);
-  if (notify) await telegramSend(text);
-  rememberSig(sig);
+  return { raw, decimals, ui: Number(raw) / 10 ** decimals };
 }
 
-// --- serveur express pour GitHub ping / uptime ---
-const app = express();
-app.get("/", (req, res) => res.send("✅ WDOG multi-tracker is alive"));
-app.get("/health", (req, res) => {
-  res.json({
-    ok: true,
-    rpc: RPC_POOL[rpcIndex],
-    processed: processed.length,
-    cursors: Object.keys(cursors).length,
-    uptime: Math.round(process.uptime()),
+// ---------- Parsing d'une transaction pour WDOG ----------
+async function processSignature(sig) {
+  const signature = typeof sig === "string" ? sig : sig?.signature;
+  if (!signature) return;
+
+  // On récupère la TX parsée
+  const tx = await connection.getParsedTransaction(signature, {
+    maxSupportedTransactionVersion: 0
   });
-});
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log("🌐 Server running on port", PORT));
 
-// --- Auto-ping pour garder Replit éveillé (toutes les 5 min) ---
-if (PING_URL) {
-  const doPing = async () => {
-    try {
-      const r = await fetch(PING_URL, { method: "GET" });
-      console.log(
-        r.ok ? "[PING OK ✅] WDOG bot self-ping" : `[PING ❌] HTTP ${r.status}`
-      );
-    } catch (e) {
-      console.log("[PING ❌] error:", e.message);
+  if (!tx || !tx.meta) return;
+
+  const pre  = tx.meta.preTokenBalances  || [];
+  const post = tx.meta.postTokenBalances || [];
+
+  // on filtre les lignes sur la mint WDOG uniquement
+  const preWDOG  = pre.filter(b => b.mint === WDOG_MINT_STR);
+  const postWDOG = post.filter(b => b.mint === WDOG_MINT_STR);
+
+  if (preWDOG.length === 0 && postWDOG.length === 0) return; // pas de WDOG ici
+
+  // Construire un map "owner => {deltaUi, decimals}" pour détecter les variations par propriétaire
+  const byOwner = new Map(); // ownerBase58 -> { pre: {amount,decimals}, post: {amount,decimals} }
+
+  function index(mapArr, side) {
+    for (const b of mapArr) {
+      const owner = b.owner || b.ownerProgram || b.account || b.wallet || ""; // champs varient selon RPC
+      const key   = owner || b.owner || ""; // best effort
+      if (!key) continue;
+      const entry = byOwner.get(key) || { pre: null, post: null };
+      entry[side] = {
+        amount: b.tokenAmount?.amount ?? "0",
+        decimals: b.tokenAmount?.decimals ?? 6
+      };
+      byOwner.set(key, entry);
     }
-  };
-  doPing();
-  setInterval(doPing, 5 * 60 * 1000);
+  }
+
+  index(preWDOG,  "pre");
+  index(postWDOG, "post");
+
+  // Calcule deltas
+  const deltas = []; // { owner, deltaUi, decimals }
+  for (const [owner, rec] of byOwner.entries()) {
+    const preAmt  = rec.pre  ? rec.pre.amount  : "0";
+    const postAmt = rec.post ? rec.post.amount : "0";
+    const decimals = (rec.post?.decimals) ?? (rec.pre?.decimals) ?? 6;
+
+    const d = Number(BigInt(postAmt) - BigInt(preAmt)) / 10 ** decimals;
+    if (Math.abs(d) > 0) {
+      deltas.push({ owner, deltaUi: d, decimals });
+    }
+  }
+
+  if (deltas.length === 0) return; // pas de mouvement WDOG détecté
+
+  // On ne spamme que si au moins un owner fait partie des adresses surveillées
+  const interesting = deltas.filter(d => MONITORED.includes(d.owner));
+  if (interesting.length === 0) return;
+
+  // Prépare un résumé par owner surveillé
+  const lines = interesting
+    .map(d => {
+      const emoji = d.deltaUi > 0 ? "🟢 +" : "🔴 ";
+      return `${emoji}${Math.abs(d.deltaUi).toLocaleString(undefined, { maximumFractionDigits: 6 })} WDOG — \`${d.owner}\``;
+    })
+    .join("\n");
+
+  // Si le top holder est dedans, ajoute son solde actuel
+  let extra = "";
+  if (interesting.some(d => d.owner === TOP_WALLET_STR)) {
+    try {
+      const bal = await getTopHolderWdogBalance();
+      extra = `\n🧮 Top holder balance: ${bal.ui.toLocaleString(undefined, { maximumFractionDigits: 6 })} WDOG`;
+    } catch (e) {
+      extra = `\n🧮 Top holder balance: (erreur: ${e.message})`;
+    }
+  }
+
+  const msg =
+    `🐶 *WDOG movement detected*\n` +
+    `${lines}\n` +
+    `🔗 https://solscan.io/tx/${signature}` +
+    extra;
+
+  await telegramSend(msg);
 }
 
-// --- Lancement principal ---
-(async () => {
-  log("🚀 WDOG watcher started. Current RPC:", RPC_POOL[rpcIndex]);
-  const ADDRS = [TOP_WALLET, ...WATCH_WALLETS];
-
-  while (true) {
-    const start = Date.now();
-    for (const addr of ADDRS) {
-      try {
-        const newSigs = await fetchNewSigsForAddress(addr);
-        for (const sig of newSigs) {
-          await processSignature(sig, true);
-          await sleep(250);
+// ---------- Un passage sur toutes les adresses ----------
+async function runOnce() {
+  log("🚀 WDOG watcher started. Current RPC:", RPC_ENDPOINT);
+  for (const addr of MONITORED) {
+    try {
+      const newSigs = await fetchNewSigsForAddress(addr, 20);
+      for (const s of newSigs) {
+        try {
+          await processSignature(s);
+          await new Promise(r => setTimeout(r, 120)); // petit throttle
+        } catch (e) {
+          log("Error processing sig", s, e.message);
         }
-      } catch (e) {
-        log("Error on address", addr, e.message);
       }
-      await sleep(jitter(PER_ADDR_DELAY_MS));
+    } catch (e) {
+      log("Error on address", addr, e.message);
     }
-    const took = Date.now() - start;
-    const wait = Math.max(0, jitter(POLL_INTERVAL_MS) - took);
-    await sleep(wait);
+    await new Promise(r => setTimeout(r, 120));
+  }
+}
+
+// ---------- Main ----------
+(async () => {
+  try {
+    await runOnce();
+
+    // Sur GitHub Actions (cron), un seul passage suffit : le job s'arrête ici.
+    // En local, si tu veux boucler toutes X minutes, décommente ci-dessous:
+    //
+    // setInterval(runOnce, 2 * 60 * 1000); // ex: toutes les 2 minutes
+
+  } catch (e) {
+    log("Fatal:", e.message);
+    process.exitCode = 1;
   }
 })();

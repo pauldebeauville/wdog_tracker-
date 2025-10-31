@@ -505,8 +505,6 @@ async function sendStartupPing() {
   }
 }
 
-sendStartupPing();
-
 // --- Run one pass over all addresses (ONE_SHOT mode) ---
 async function runOnce() {
   const ADDRS = [TOP_WALLET, ...WATCH_WALLETS];

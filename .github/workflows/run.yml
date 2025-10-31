@@ -2,31 +2,35 @@ name: WDOG watcher
 
 on:
   schedule:
-    - cron: "*/30 * * * *"
+    - cron: "*/30 * * * *"   # toutes les 30 min
   workflow_dispatch:
 
 jobs:
   run:
     runs-on: ubuntu-latest
     permissions:
-      contents: write
+      contents: write   # 👈 nécessaire pour push balances.json
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0     # 👈 indispensable pour pouvoir push ensuite
+
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
 
-      - name: Check secrets
+      - name: Check required secrets
         run: |
+          test -n "${{ secrets.SOLANA_RPC_URL }}"      || (echo "Missing SOLANA_RPC_URL" && exit 1)
           test -n "${{ secrets.WDOG_MINT }}"           || (echo "Missing WDOG_MINT" && exit 1)
           test -n "${{ secrets.TELEGRAM_BOT_TOKEN }}"  || (echo "Missing TELEGRAM_BOT_TOKEN" && exit 1)
           test -n "${{ secrets.TELEGRAM_CHAT_ID }}"    || (echo "Missing TELEGRAM_CHAT_ID" && exit 1)
 
-      - name: Install deps
+      - name: Install dependencies
         run: npm install
 
-      - name: Run WDOG Watcher
+      - name: Run WDOG watcher
         env:
           SOLANA_RPC_URL: ${{ secrets.SOLANA_RPC_URL }}
           WDOG_MINT: ${{ secrets.WDOG_MINT }}
@@ -34,3 +38,20 @@ jobs:
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           NODE_OPTIONS: --unhandled-rejections=strict
         run: node watch-wdog.js
+
+      # 👇 Étape à ajouter : crée ou met à jour balances.json et push dans le repo
+      - name: Commit balances.json if changed
+        run: |
+          if [ -f balances.json ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add balances.json
+            if ! git diff --cached --quiet; then
+              git commit -m "chore: update balances.json"
+              git push
+            else
+              echo "No changes to commit."
+            fi
+          else
+            echo "balances.json missing after run"
+          fi

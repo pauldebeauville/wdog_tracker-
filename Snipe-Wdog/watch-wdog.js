@@ -30,7 +30,6 @@ const WATCH_WALLETS = [
   "AaZkwh9WprXqVN32f36mt7dhgA2RuBAE4k5hjyKxazsM",
   "6akCMEayNjYUZ5AjHZmrscN8tVYr59kFThQAG2ceVSmF",
   "GhPCVjvZo5Fq4vLqAGktPrcgG7n8sQfFUPYJnyd9cW6q",
-  "7Vg7JtLPF5ohqKcnBvQvLkZfNq6gyWZLHTXHotWallet", // exemple label HTX (mets l’adresse si tu l’as)
   "2iDCtgEYhcnRfbF9Pq1jQk4vP1EqTiAL7RyJgDsDpRmg",
   "EPyhiYkKqAXUBEmG4qkufcvNqdm4wC3AP4WxgHRF7Umh",
   "joDb79rTVsyxEZJhAVr8X7awTe2mtZtwx3WoXk4YeY9Z",

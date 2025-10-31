@@ -1,39 +1,41 @@
-name: WDOG Multi-Tracker Bot
+name: WDOG watcher
 
 on:
   schedule:
-    - cron: "*/30 * * * *"
-  workflow_dispatch:
+    - cron: "*/30 * * * *"   # toutes les 30 minutes
+  workflow_dispatch:         # exécution manuelle possible
 
 jobs:
-  run-bot:
+  run:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: Snipe-Wdog
+    permissions:
+      contents: read
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
-          node-version: 18
+          node-version: '20'
+          cache: 'npm'
 
-      - name: Install dependencies
+      - name: Check required secrets
         run: |
-          if [ -f package-lock.json ]; then
-            npm ci
-          else
-            npm install
-          fi
+          test -n "${{ secrets.SOLANA_RPC_URL }}"      || (echo "Missing SOLANA_RPC_URL" && exit 1)
+          test -n "${{ secrets.WDOG_TOP_WALLET }}"     || (echo "Missing WDOG_TOP_WALLET" && exit 1)
+          test -n "${{ secrets.WDOG_MINT }}"           || (echo "Missing WDOG_MINT" && exit 1)
+          test -n "${{ secrets.TELEGRAM_BOT_TOKEN }}"  || (echo "Missing TELEGRAM_BOT_TOKEN" && exit 1)
+          test -n "${{ secrets.TELEGRAM_CHAT_ID }}"    || (echo "Missing TELEGRAM_CHAT_ID" && exit 1)
 
-      - name: Send Telegram test ping
-        run: |
-          curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_TOKEN }}/sendMessage" \
-            -d chat_id=${{ secrets.TELEGRAM_CHAT_ID }} \
-            --data-urlencode text="✅ WDOG bot is live on GitHub Actions ($(date -u))."
+      - name: Install deps
+        run: npm ci
 
-      - name: Run WDOG bot
+      - name: Run watcher
+        env:
+          SOLANA_RPC_URL: ${{ secrets.SOLANA_RPC_URL }}
+          WDOG_TOP_WALLET: ${{ secrets.WDOG_TOP_WALLET }}
+          WDOG_MINT: ${{ secrets.WDOG_MINT }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          NODE_OPTIONS: --unhandled-rejections=strict
         run: node watch-wdog.js

@@ -35,6 +35,18 @@ jobs:
       - name: Install dependencies
         run: npm install
 
+      - name: Telegram test ping
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          set -e
+          curl -sS -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+            -d chat_id="${TELEGRAM_CHAT_ID}" \
+            -d text="WDOG watcher test OK ✅ ($(date -u +"%Y-%m-%d %H:%M UTC"))" \
+            -d parse_mode="Markdown"
+
+
       - name: Run WDOG watcher
         env:
           SOLANA_RPC_URL: ${{ secrets.SOLANA_RPC_URL }}

@@ -484,6 +484,29 @@ app.get("/test-tg", async (req, res) => {
     setInterval(doPing, 5 * 60 * 1000);
   }
 
+// 🚀 --- GitHub Actions auto-start notification ---
+async function sendStartupPing() {
+  try {
+    const message = `🚀 WDOG Bot started automatically at ${new Date().toUTCString()}`;
+    const telegramToken = process.env.TELEGRAM_TOKEN;
+    const chatId = process.env.TELEGRAM_CHAT_ID;
+
+    await fetch(`https://api.telegram.org/bot${telegramToken}/sendMessage`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        chat_id: chatId,
+        text: message,
+      }),
+    });
+    console.log("[INFO] Sent startup ping to Telegram.");
+  } catch (err) {
+    console.error("[ERROR] Failed to send startup ping:", err);
+  }
+}
+
+sendStartupPing();
+
 // --- Run one pass over all addresses (ONE_SHOT mode) ---
 async function runOnce() {
   const ADDRS = [TOP_WALLET, ...WATCH_WALLETS];

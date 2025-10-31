@@ -2,17 +2,16 @@ name: WDOG Multi-Tracker Bot
 
 on:
   schedule:
-    - cron: "*/2 * * * *"   # toutes les 2 minutes
+    - cron: "*/5 * * * *" # toutes les 5 minutes
   workflow_dispatch:
-
-# 👉 Par défaut, on travaille dans le sous-dossier Snipe-Wdog
-defaults:
-  run:
-    working-directory: Snipe-Wdog
 
 jobs:
   run-bot:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: Snipe-Wdog
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -20,35 +19,21 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 18
 
-      # (optionnel) debug pour vérifier qu'on est bien dans le bon dossier
-      - name: Debug workspace
+      - name: Install dependencies
         run: |
-          pwd
-          ls -la
-          node -v
+          if [ -f package-lock.json ]; then
+            npm ci
+          else
+            npm install
+          fi
 
-    - name: Install dependencies
-      # utilise le lock si présent, sinon npm install
-      run: |
-        if [ -f package-lock.json ]; then
-          npm ci
-        else
-          npm install
-        fi
-
-    - name: Send Telegram test ping
-      run: |
-        curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_TOKEN }}/sendMessage" \
-          -d chat_id=${{ secrets.TELEGRAM_CHAT_ID }} \
-          --data-urlencode text="✅ WDOG bot is live on GitHub Actions ($(date -u))."
+      - name: Send Telegram test ping
+        run: |
+          curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_TOKEN }}/sendMessage" \
+            -d chat_id=${{ secrets.TELEGRAM_CHAT_ID }} \
+            --data-urlencode text="✅ WDOG bot is live on GitHub Actions ($(date -u))."
 
       - name: Run WDOG bot
-        env:
-          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-          RPC_ENDPOINT: https://solana-rpc.publicnode.com
-          # PING_URL inutile sur Actions, on le laisse vide
-          PING_URL: ""
         run: node watch-wdog.js

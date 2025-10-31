@@ -19,9 +19,6 @@ console.log("[DEBUG] Telegram token suffix =", (process.env.TELEGRAM_TOKEN || ""
 const express = require("express");
 const { Connection, PublicKey } = require("@solana/web3.js");
 
-// --- DEBUG .ENV CHEMIN ET CONTENU ---
-console.log("[DEBUG] Loaded .env from:", require("path").resolve(".env"));
-
 try {
   const content = require("fs").readFileSync(require("path").resolve(".env"), "utf8");
   console.log("\n========== .ENV CONTENT DETECTED ==========\n");

@@ -4,16 +4,16 @@
 const fs = require("fs");
 const path = require("path");
 
-// 👇 forcer dotenv à charger le .env du dossier courant (pas celui de workspace)
+// ✅ Charge le .env local s’il existe (Replit/local), sinon utilise les secrets GitHub
 const envPath = path.join(__dirname, ".env");
-require("dotenv").config({ path: envPath, override: true });
-try {
-  require("dotenv").config();
-} catch (e) {
-  console.log("[INFO] No local .env file (GitHub Actions mode)");
+if (fs.existsSync(envPath)) {
+  require("dotenv").config({ path: envPath, override: true });
+  console.log("[DEBUG] Using local .env:", envPath);
+} else {
+  console.log("[INFO] No local .env file (CI mode). Using GitHub Secrets.");
 }
 
-console.log("[DEBUG] Using .env:", envPath);
+// Debug optionnel
 console.log("[DEBUG] Telegram token suffix =", (process.env.TELEGRAM_TOKEN || "").slice(-6));
 
 const express = require("express");

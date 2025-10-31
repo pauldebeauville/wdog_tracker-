@@ -2,8 +2,13 @@ name: WDOG Multi-Tracker Bot
 
 on:
   schedule:
-    - cron: "*/2 * * * *"  # toutes les 2 minutes
-  workflow_dispatch:      # permet de le lancer manuellement
+    - cron: "*/2 * * * *"   # toutes les 2 minutes
+  workflow_dispatch:
+
+# 👉 Par défaut, on travaille dans le sous-dossier Snipe-Wdog
+defaults:
+  run:
+    working-directory: Snipe-Wdog
 
 jobs:
   run-bot:
@@ -17,13 +22,27 @@ jobs:
         with:
           node-version: 20
 
+      # (optionnel) debug pour vérifier qu'on est bien dans le bon dossier
+      - name: Debug workspace
+        run: |
+          pwd
+          ls -la
+          node -v
+
       - name: Install dependencies
-        run: npm install
+        # utilise le lock si présent, sinon npm install
+        run: |
+          if [ -f package-lock.json ]; then
+            npm ci
+          else
+            npm install
+          fi
 
       - name: Run WDOG bot
         env:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           RPC_ENDPOINT: https://solana-rpc.publicnode.com
-          PING_URL: https://github.com/${{ github.repository }}/actions
+          # PING_URL inutile sur Actions, on le laisse vide
+          PING_URL: ""
         run: node watch-wdog.js

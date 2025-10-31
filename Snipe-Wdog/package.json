@@ -1,7 +1,7 @@
 {
   "name": "wdog-watcher",
-  "version": "1.2.0",
-  "description": "Watcher WDOG Solana — multi-wallet, alerts only on change, updates balances.json in repo",
+  "version": "1.3.0",
+  "description": "Watcher WDOG Solana — multi-wallet incluant top inflows et top holder",
   "main": "watch-wdog.js",
   "type": "module",
   "scripts": {

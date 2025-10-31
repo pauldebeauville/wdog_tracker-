@@ -9,12 +9,16 @@ jobs:
   run:
     runs-on: ubuntu-latest
     permissions:
-      contents: write   # 👈 nécessaire pour push balances.json
+      contents: write
+
+    defaults:
+      run:
+        working-directory: Snipe-Wdog   # 👈 TOUT se lance depuis ce dossier
 
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0     # 👈 indispensable pour pouvoir push ensuite
+          fetch-depth: 0
 
       - uses: actions/setup-node@v4
         with:
@@ -26,6 +30,11 @@ jobs:
           test -n "${{ secrets.WDOG_MINT }}"           || (echo "Missing WDOG_MINT" && exit 1)
           test -n "${{ secrets.TELEGRAM_BOT_TOKEN }}"  || (echo "Missing TELEGRAM_BOT_TOKEN" && exit 1)
           test -n "${{ secrets.TELEGRAM_CHAT_ID }}"    || (echo "Missing TELEGRAM_CHAT_ID" && exit 1)
+
+      - name: Show workspace (debug)
+        run: |
+          pwd
+          ls -la
 
       - name: Install dependencies
         run: npm install
@@ -39,7 +48,6 @@ jobs:
           NODE_OPTIONS: --unhandled-rejections=strict
         run: node watch-wdog.js
 
-      # 👇 Étape à ajouter : crée ou met à jour balances.json et push dans le repo
       - name: Commit balances.json if changed
         run: |
           if [ -f balances.json ]; then

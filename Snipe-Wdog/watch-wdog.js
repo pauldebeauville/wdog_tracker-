@@ -14,14 +14,31 @@ if (process.env.CI !== 'true') {
   if (res.parsed) console.log(`[dotenv] loaded ${Object.keys(res.parsed).length} keys locally`);
 }
 
-// --- CONFIG ---
-const RPC_URL = process.env.SOLANA_RPC_URL?.trim() || "https://api.mainnet-beta.solana.com";
-const WDOG_MINT = new PublicKey(process.env.WDOG_MINT?.trim() || "XXXXXXXXXXXXX"); // Mets le mint WDOG ici
-const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
-const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID;
+// --- CONFIG REQUISE ---
+const RPC_URL = (process.env.SOLANA_RPC_URL || '').trim();
+const TELEGRAM_BOT_TOKEN = (process.env.TELEGRAM_BOT_TOKEN || '').trim();
+const TELEGRAM_CHAT_ID = (process.env.TELEGRAM_CHAT_ID || '').trim();
+const WDOG_MINT_STR = (process.env.WDOG_MINT || '').trim();
+
+function must(name, val) {
+  if (!val) throw new Error(`[CONFIG] Missing ${name}`);
+  return val;
+}
+const isBase58 = (s) => /^[1-9A-HJ-NP-Za-km-z]+$/.test(s);
+
+// Vérifs strictes des secrets indispensables
+must('SOLANA_RPC_URL', RPC_URL);
+must('TELEGRAM_BOT_TOKEN', TELEGRAM_BOT_TOKEN);
+must('TELEGRAM_CHAT_ID', TELEGRAM_CHAT_ID);
+must('WDOG_MINT', WDOG_MINT_STR);
+if (!isBase58(WDOG_MINT_STR)) {
+  throw new Error(`[CONFIG] WDOG_MINT is not base58: "${WDOG_MINT_STR}"`);
+}
+const WDOG_MINT = new PublicKey(WDOG_MINT_STR);
 
 // 🔹 LISTE DES WALLETS À SURVEILLER 🔹
-const WATCH_WALLETS = [
+// (HTX label retiré — remets l’ADRESSE réelle quand tu l’as)
+const WATCH_WALLETS_STRINGS = [
   // Top Holder Kraken-funded
   "BFFPkReNnS5hayiVu1iwkaQgCYxoK7sCtZ17J6V4uUpH",
   // Top inflows
@@ -30,11 +47,20 @@ const WATCH_WALLETS = [
   "AaZkwh9WprXqVN32f36mt7dhgA2RuBAE4k5hjyKxazsM",
   "6akCMEayNjYUZ5AjHZmrscN8tVYr59kFThQAG2ceVSmF",
   "GhPCVjvZo5Fq4vLqAGktPrcgG7n8sQfFUPYJnyd9cW6q",
+  // "HTX: Hot Wallet"  <-- label supprimé : mets l'ADRESSE base58 quand tu l'auras
   "2iDCtgEYhcnRfbF9Pq1jQk4vP1EqTiAL7RyJgDsDpRmg",
   "EPyhiYkKqAXUBEmG4qkufcvNqdm4wC3AP4WxgHRF7Umh",
   "joDb79rTVsyxEZJhAVr8X7awTe2mtZtwx3WoXk4YeY9Z",
   "7WenWCTvSBxW7ye2TfqLqp8F9DeJebhso3KjmG2Qy45A"
-].map(x => new PublicKey(x));
+];
+
+// Valide chaque adresse et affiche laquelle pose problème si c’est le cas
+for (const s of WATCH_WALLETS_STRINGS) {
+  if (!isBase58(s)) {
+    throw new Error(`[CONFIG] Invalid wallet (not base58): "${s}"`);
+  }
+}
+const WATCH_WALLETS = WATCH_WALLETS_STRINGS.map((x) => new PublicKey(x));
 
 const BALANCES_FILE = path.resolve(process.cwd(), 'balances.json');
 

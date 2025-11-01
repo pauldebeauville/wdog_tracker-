@@ -1,80 +1,57 @@
-// Snipe-Wdog/watch-wdog.js — version finale sans batch (compatible Helius Free)
+// watch-wdog-multi.js — surveille plusieurs wallets (simple)
 import { Connection, PublicKey } from "@solana/web3.js";
 import fetch from "node-fetch";
 
-const RPC = process.env.SOLANA_RPC;                  // Helius (obligatoire)
+const RPC = process.env.SOLANA_RPC;
 const TELEGRAM_BOT = process.env.TELEGRAM_BOT_TOKEN;
 const TELEGRAM_CHAT = process.env.TELEGRAM_CHAT_ID;
-const WDOG_MINT = process.env.WDOG_MINT;             // mint WDOG
-const TARGET = process.env.TARGET_ADDRESS;           // wallet à surveiller
-
+const WDOG_MINT = process.env.WDOG_MINT;
 const LOOKBACK_TX = Number(process.env.LOOKBACK_TX || 6);
-const WDOG_ALERT_MIN = BigInt(process.env.WDOG_ALERT_MIN || "1000000"); // seuil en unités
+const WDOG_ALERT_MIN = BigInt(process.env.WDOG_ALERT_MIN || "1000000");
 
-const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+// <-- liste à adapter / copier-coller les adresses que tu veux monitorer
+const WATCH = [
+  { label: "Top_holder", addr: "BFFPkReNnS5hayiVu1iwkaQgCYxoK7sCtZ17J6V4uUpH" },
+  { label: "Swap_wallet", addr: "6akCMEAUGD6ZjC2kaMZzhAwNMw46iQA4S5TvDPTHQAG2" },
+  { label: "Router", addr: "ARu4n5mFdZogZAravu7CcizaojWnS6oqka37gdLT5SZn" },
+  { label: "Raydium_V4", addr: "ARu4n5mFdZr..." }, // remplace par l'adresse exacte si besoin
+  { label: "Hub_CEX", addr: "BfP2dBiHbiYvsmESsgHEL8wQt2z55bDNKnwmNRB34G" },
+  { label: "Buffer_SOL", addr: "4WJpib4Ruf6EYw4PTxCeozjYN..." }
+];
 
 async function sendTelegram(text){
-  if(!TELEGRAM_BOT || !TELEGRAM_CHAT) return;
-  try{
-    const r = await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT}/sendMessage`,{
-      method:"POST",
-      headers:{ "Content-Type":"application/json" },
-      body: JSON.stringify({ chat_id: TELEGRAM_CHAT, text })
-    });
-    if(!r.ok) console.error("Telegram error:", await r.text());
-  }catch(e){ console.error("Telegram send failed:", e.message); }
+  if(!TELEGRAM_BOT||!TELEGRAM_CHAT) return;
+  await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT}/sendMessage`,{
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({chat_id:TELEGRAM_CHAT, text})
+  }).catch(()=>{});
 }
 
-function assertEnv(name, val){
-  if(!val || String(val).trim()===""){
-    throw new Error(`Missing env ${name}. Set it in GitHub Secrets.`);
-  }
-}
+const conn = new Connection(RPC, { commitment: "confirmed" });
 
-async function main(){
-  console.log("🐶 WDOG watcher started...");
-  assertEnv("SOLANA_RPC", RPC);
-  assertEnv("TARGET_ADDRESS", TARGET);
-  assertEnv("WDOG_MINT", WDOG_MINT);
-
-  const conn = new Connection(RPC, { commitment: "confirmed" });
-  console.log("✅ Using RPC:", RPC.includes("helius") ? "Helius" : RPC);
-
-  const targetPk = new PublicKey(TARGET);
-
-  // 1) Récupère les signatures (OK plan gratuit)
-  const sigs = await conn.getSignaturesForAddress(targetPk, { limit: LOOKBACK_TX });
-  if(!sigs.length){ console.log("No recent tx for target. Done."); return; }
-
-  // 2) PARSE **SANS BATCH** : getParsedTransaction(signature) (singulier)
+async function checkAddress(entry){
+  const pk = new PublicKey(entry.addr);
+  const sigs = await conn.getSignaturesForAddress(pk, { limit: LOOKBACK_TX });
   for(const s of sigs){
-    let tx;
-    try{
-      tx = await conn.getParsedTransaction(s.signature, { maxSupportedTransactionVersion: 0 });
-    }catch(e){
-      console.error("getParsedTransaction error:", e?.message || e);
-      await sleep(500);
-      continue;
-    }
-    if(!tx){ await sleep(300); continue; }
-
+    const tx = await conn.getParsedTransaction(s.signature, { maxSupportedTransactionVersion: 0 });
+    if(!tx) continue;
     const post = tx.meta?.postTokenBalances || [];
     for(const p of post){
       if(p.mint === WDOG_MINT){
         const amt = BigInt(p.uiTokenAmount?.amount || "0");
-        if (amt >= WDOG_ALERT_MIN){
-          await sendTelegram(`🚀 Mouvement WDOG détecté\nTx: https://solscan.io/tx/${s.signature}`);
+        if(amt >= WDOG_ALERT_MIN){
+          await sendTelegram(`🚨 ${entry.label} (${entry.addr.slice(0,6)}…${entry.addr.slice(-6)})\n${amt} WDOG\nTx: https://solscan.io/tx/${s.signature}`);
         }
       }
     }
-    await sleep(400); // douceur RPC
   }
-
-  console.log("✅ WDOG scan complete.");
 }
 
-main().catch(async (e)=>{
-  console.error("❌ WDOG Watch error:", e?.message || e);
-  await sendTelegram(`❌ Erreur WDOG bot : ${e?.message || e}`);
-  process.exit(1);
-});
+(async function(){
+  for(const w of WATCH){
+    try{ await checkAddress(w); }catch(e){ console.error("err", w.label, e.message); }
+    await new Promise(r=>setTimeout(r, 400)); // gentle pause
+  }
+  console.log("Scan done.");
+})();

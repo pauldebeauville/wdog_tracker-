@@ -1,15 +1,12 @@
 {
-  "name": "wdog-topwatch",
+  "name": "wdog-watch",
   "version": "1.0.0",
-  "description": "Alerte dès qu'il y a du WDOG qui passe par le TOP wallet",
   "type": "module",
-  "main": "watch-wdog-top.js",
   "scripts": {
-    "start": "node watch-wdog-top.js"
+    "start": "node watch-wdog-alerts.js"
   },
-  "engines": { "node": ">=20" },
   "dependencies": {
-    "@solana/web3.js": "^1.95.3",
+    "@solana/web3.js": "^1.95.1",
     "dotenv": "^16.4.5",
     "node-fetch": "^3.3.2"
   }

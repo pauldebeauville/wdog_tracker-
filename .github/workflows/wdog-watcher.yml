@@ -2,25 +2,37 @@ name: WDOG Watcher
 
 on:
   schedule:
-    - cron: "*/30 * * * *"   # toutes les 30 minutes
+    - cron: "*/30 * * * *"
   workflow_dispatch:
 
 jobs:
   run:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repository
+      - name: Checkout repository (full)
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Show workspace (debug)
+        run: |
+          pwd
+          ls -la
+          echo "--- .github/workflows ---"
+          ls -la .github/workflows || true
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: "20"
 
+      # ⚠️ force l'exécution à la RACINE du repo
       - name: Install dependencies
+        working-directory: ${{ github.workspace }}
         run: npm install
 
       - name: Run watcher
+        working-directory: ${{ github.workspace }}
         env:
           SOLANA_RPC: ${{ secrets.SOLANA_RPC }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}

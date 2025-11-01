@@ -4,9 +4,10 @@ import dotenv from "dotenv";
 dotenv.config();
 
 const RPCS = [
-  "https://api.mainnet-beta.solana.com",
+ "https://api.mainnet-beta.solana.com",
   "https://solana-api.projectserum.com",
-  "https://rpc.ankr.com/solana"
+  "https://rpc.ankr.com/solana",
+  "https://solana.public-rpc.com" // nouveau endpoint public ajouté
 ];
 
 const TELEGRAM_BOT = process.env.TELEGRAM_BOT_TOKEN;

@@ -1,24 +1,24 @@
-name: WDOG Watch
+name: WDOG Watcher
 
 on:
   schedule:
-    - cron: "*/30 * * * *"   # toutes les 30 min
+    - cron: "*/30 * * * *"   # toutes les 30 minutes
   workflow_dispatch:
 
 jobs:
   run:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup Node
+      - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: "20"
 
-      - name: Install
-        run: npm ci || npm i
+      - name: Install dependencies
+        run: npm install
 
       - name: Run watcher
         env:
@@ -29,4 +29,4 @@ jobs:
           LOOKBACK_TX: "40"
           WDOG_ALERT_MIN: "1000000"
           SOL_ALERT_MIN: "200"
-        run: npm start
+        run: node watch-wdog.js

@@ -1,73 +1,32 @@
-name: WDOG watcher
+name: WDOG Watch
 
 on:
   schedule:
-    - cron: "*/30 * * * *"   # toutes les 30 minutes
+    - cron: "*/30 * * * *"   # toutes les 30 min
   workflow_dispatch:
 
 jobs:
   run:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
-
-    defaults:
-      run:
-        working-directory: Snipe-Wdog   # ← dossier où se trouve ton watch-wdog.js
-
     steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
+      - name: Checkout
+        uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
         with:
           node-version: "20"
 
-      - name: Check required secrets
-        run: |
-          test -n "${{ secrets.SOLANA_RPC_URL }}"      || (echo "Missing SOLANA_RPC_URL" && exit 1)
-          test -n "${{ secrets.WDOG_MINT }}"           || (echo "Missing WDOG_MINT" && exit 1)
-          test -n "${{ secrets.WDOG_TOP_WALLET }}"     || (echo "Missing WDOG_TOP_WALLET" && exit 1)
-          test -n "${{ secrets.TELEGRAM_BOT_TOKEN }}"  || (echo "Missing TELEGRAM_BOT_TOKEN" && exit 1)
-          test -n "${{ secrets.TELEGRAM_CHAT_ID }}"    || (echo "Missing TELEGRAM_CHAT_ID" && exit 1)
+      - name: Install
+        run: npm ci || npm i
 
-      - name: Install dependencies
-        run: npm install
-
-      - name: Run WDOG watcher
+      - name: Run watcher
         env:
-          SOLANA_RPC_URL: ${{ secrets.SOLANA_RPC_URL }}
-          WDOG_MINT: ${{ secrets.WDOG_MINT }}
-          WDOG_TOP_WALLET: ${{ secrets.WDOG_TOP_WALLET }}
+          SOLANA_RPC: ${{ secrets.SOLANA_RPC }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-        run: node watch-wdog.js
-
-      - name: Commit balances file if changed
-        run: |
-          set -e
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-
-          FILE=""
-          for f in balances_top.json balances.json; do
-            if [ -f "$f" ]; then
-              FILE="$f"
-              break
-            fi
-          done
-
-          if [ -z "$FILE" ]; then
-            echo "No balances file found."
-            exit 0
-          fi
-
-          git add "$FILE"
-          if ! git diff --cached --quiet; then
-            git commit -m "chore: update $FILE"
-            git push
-            echo "Committed $FILE"
-          else
-            echo "No changes to commit."
-          fi
+          WDOG_MINT: ${{ secrets.WDOG_MINT }}
+          LOOKBACK_TX: "40"
+          WDOG_ALERT_MIN: "1000000"
+          SOL_ALERT_MIN: "200"
+        run: npm start

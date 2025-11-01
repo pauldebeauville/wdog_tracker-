@@ -1,39 +1,41 @@
 name: WDOG Watcher
 
 on:
-  workflow_dispatch:        # tu peux le lancer manuellement
+  workflow_dispatch:
   schedule:
-    - cron: "*/30 * * * *"  # toutes les 30 minutes
+    - cron: "*/30 * * * *"  # toutes les 30 min
 
 jobs:
-  wdog:
+  run:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: ${{ github.workspace }}
 
     steps:
-      - name: Checkout repo
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Debug path
+      - name: Show directory (debug)
         run: |
-          echo "Current dir: $(pwd)"
-          echo "Files here:"
-          ls -la
+          echo "PWD:"
+          pwd
+          echo "Files:"
+          ls -R
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: "20"
 
+      # 👇 Voici la différence clé : on se place dans le bon dossier
       - name: Install dependencies
+        working-directory: ./Snipe-Wdog
         run: npm install
 
-      - name: Run WDOG Watcher
+      - name: Run WDOG watcher
+        working-directory: ./Snipe-Wdog
         env:
           SOLANA_RPC: ${{ secrets.SOLANA_RPC }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          
           WDOG_MINT: ${{ secrets.WDOG_MINT }}
         run: node watch-wdog.js

@@ -1,0 +1,39 @@
+name: WDOG Watcher
+
+on:
+  workflow_dispatch:        # tu peux le lancer manuellement
+  schedule:
+    - cron: "*/30 * * * *"  # toutes les 30 minutes
+
+jobs:
+  wdog:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ github.workspace }}
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Debug path
+        run: |
+          echo "Current dir: $(pwd)"
+          echo "Files here:"
+          ls -la
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Run WDOG Watcher
+        env:
+          SOLANA_RPC: ${{ secrets.SOLANA_RPC }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          WDOG_MINT: ${{ secrets.WDOG_MINT }}
+        run: node watch-wdog.js

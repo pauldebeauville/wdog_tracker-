@@ -1,41 +1,38 @@
 name: WDOG Watcher
-
 on:
   workflow_dispatch:
-  schedule:
-    - cron: "*/30 * * * *"  # toutes les 30 min
 
 jobs:
   run:
     runs-on: ubuntu-latest
+    env:
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+      SOLANA_RPC: ${{ secrets.SOLANA_RPC }}         # <-- ton endpoint Helius
+      WDOG_MINT: ${{ secrets.WDOG_MINT }}
+      TARGET_ADDRESS: ${{ secrets.TARGET_ADDRESS }}
+      WDOG_ALERT_MIN: ${{ secrets.WDOG_ALERT_MIN }}
+      SOL_ALERT_MIN: ${{ secrets.SOL_ALERT_MIN }}
+      LOOKBACK_TX: ${{ secrets.LOOKBACK_TX }}
+      WDOG_TOP_WALLET: ${{ secrets.WDOG_TOP_WALLET }}
 
     steps:
-      - name: Checkout repository
+      - name: Checkout repo
         uses: actions/checkout@v4
 
-      - name: Show directory (debug)
-        run: |
-          echo "PWD:"
-          pwd
-          echo "Files:"
-          ls -R
-
-      - name: Setup Node.js
+      - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: '20'
 
-      # 👇 Voici la différence clé : on se place dans le bon dossier
-      - name: Install dependencies
-        working-directory: ./Snipe-Wdog
-        run: npm install
+      - name: Sanity check (masqué)
+        run: |
+          node -e "console.log('SOLANA_RPC present =', !!process.env.SOLANA_RPC); console.log('TARGET_ADDRESS length =', (process.env.TARGET_ADDRESS||'').length);"
+
+      - name: Install deps
+        working-directory: Snipe-Wdog
+        run: npm ci || npm i
 
       - name: Run WDOG watcher
-        working-directory: ./Snipe-Wdog
-        env:
-          SOLANA_RPC: ${{ secrets.SOLANA_RPC }}
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-          
-          WDOG_MINT: ${{ secrets.WDOG_MINT }}
+        working-directory: Snipe-Wdog
         run: node watch-wdog.js

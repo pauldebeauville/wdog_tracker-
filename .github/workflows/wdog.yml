@@ -1,6 +1,8 @@
 name: WDOG Watcher
 on:
   workflow_dispatch:
+  schedule:
+    - cron: "*/30 * * * *"   # exécution toutes les 30 minutes
 
 jobs:
   run:
@@ -8,7 +10,7 @@ jobs:
     env:
       TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
       TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-      SOLANA_RPC: ${{ secrets.SOLANA_RPC }}         # <-- ton endpoint Helius
+      SOLANA_RPC: ${{ secrets.SOLANA_RPC }}
       WDOG_MINT: ${{ secrets.WDOG_MINT }}
       TARGET_ADDRESS: ${{ secrets.TARGET_ADDRESS }}
       WDOG_ALERT_MIN: ${{ secrets.WDOG_ALERT_MIN }}

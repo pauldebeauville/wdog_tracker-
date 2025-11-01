@@ -1,192 +1,130 @@
-// watch-wdog-alerts.js
-// Alerte Telegram sur mouvements WDOG/SOL des wallets clés (Solana)
+// --- Imports ---
+import { Connection, PublicKey } from "@solana/web3.js";
+import fetch from "node-fetch";
+import dotenv from "dotenv";
+dotenv.config();
 
-import 'dotenv/config';
-import { Connection, clusterApiUrl } from '@solana/web3.js';
+// --- Environnement ---
+const SOLANA_RPC = process.env.SOLANA_RPC;
+const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
+const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID;
+const WDOG_MINT = process.env.WDOG_MINT;
+const LOOKBACK_TX = process.env.LOOKBACK_TX || 40;
+const WDOG_ALERT_MIN = process.env.WDOG_ALERT_MIN || 1000000;
+const SOL_ALERT_MIN = process.env.SOL_ALERT_MIN || 200;
 
-const {
-  SOLANA_RPC,
-  TELEGRAM_BOT_TOKEN,
-  TELEGRAM_CHAT_ID,
-  WDOG_MINT, // ⚠️ à renseigner (mint WDOG depuis Solscan)
-  LOOKBACK_TX = '40', // nb de tx à scanner par wallet à chaque run
-  WDOG_ALERT_MIN = '1000000', // seuil WDOG (tokens) pour alerte
-  SOL_ALERT_MIN = '200', // seuil SOL pour alerte
-} = process.env;
+// --- Connexion RPC ---
+const conn = new Connection(SOLANA_RPC, "confirmed");
 
-if (!TELEGRAM_BOT_TOKEN || !TELEGRAM_CHAT_ID) {
-  console.error('❌ TELEGRAM_BOT_TOKEN ou TELEGRAM_CHAT_ID manquant dans .env');
-  process.exit(1);
-}
-if (!WDOG_MINT) {
-  console.error('❌ WDOG_MINT manquant dans .env (copie l’adresse mint WDOG depuis Solscan)');
-  process.exit(1);
-}
-
-const conn = new Connection(SOLANA_RPC || clusterApiUrl('mainnet-beta'), 'confirmed');
-
-// —— Adresses à surveiller (tu peux en ajouter) ——
-const WATCH = {
-  // Historiques / Kraken
-  TOP_HOLDER: 'BFFPkReNnS5hayiVu1iwkaQgCYxoK7sCtZ17J6V4uUpH',
-  SWAP_WALLET: '6akCMEAUGD6ZjC2kaMZzhAwNMw46iQA4S5TvDPTHQAG2',
-
-  // Router Raydium/Orca (actif faible mais critique si > 1M WDOG)
-  ROUTER: 'ARu4n5mFdZogZAravu7CcizaojWnS6oqka37gdLT5SZn',
-
-  // Hub CEX / MM
-  HUB: 'BfP2dBiHbiYvsmESsgHEL8wQt2z55bDNKnwmNRB34G',
-
-  // Compte tampon SOL
-  BUFFER_SOL: '4WJpib4Ruf6EYw4PTxCeoziYNUA3GAdFSJ9xWx76JnFj',
-};
-
-// (Optionnel) adresses bridge connues à compléter (ex: deBridge source sur Solana)
-const BRIDGE_ADDRESSES = [
-  // 'deBridgeSourcePubkeyIci'
-];
-
-const wd = BigInt(WDOG_ALERT_MIN);
-const solMin = BigInt(Math.floor(Number(SOL_ALERT_MIN) * 1e9)); // lamports
-
-async function sendTelegram(text) {
-  const url = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`;
-  const body = {
-    chat_id: TELEGRAM_CHAT_ID,
-    text,
-    parse_mode: 'HTML',
-    disable_web_page_preview: true,
-  };
-  const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-  if (!res.ok) {
-    console.error('❌ Telegram error', await res.text());
+// --- Fonctions utilitaires ---
+async function sendTelegram(message) {
+  try {
+    const url = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`;
+    const body = { chat_id: TELEGRAM_CHAT_ID, text: message, parse_mode: "Markdown" };
+    const res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    if (!res.ok) console.error("❌ Telegram error:", await res.text());
+  } catch (e) {
+    console.error("❌ Telegram send failed:", e);
   }
 }
 
-function short(addr) { return `${addr.slice(0,6)}…${addr.slice(-6)}`; }
-function fmtLamports(l) { return Number(l) / 1e9; }
-function fmtInt(n) { return new Intl.NumberFormat('en-US').format(n); }
-
-async function fetchParsed(address) {
-  // On prend les dernières signatures et on parse
-  const sigs = await conn.getSignaturesForAddress(address, { limit: Number(LOOKBACK_TX) });
-  if (sigs.length === 0) return [];
-  const txs = await conn.getParsedTransactions(sigs.map(s => s.signature), { maxSupportedTransactionVersion: 0 });
-  // on reconstruit (signature + parsed)
-  return txs.map((t, i) => ({ signature: sigs[i].signature, slot: sigs[i].slot, err: sigs[i].err, tx: t })).filter(x => x.tx);
+function short(addr) {
+  return `${addr.slice(0, 6)}...${addr.slice(-6)}`;
+}
+function fmtLamports(l) {
+  return Number(l) / 1e9;
+}
+function fmtInt(n) {
+  return new Intl.NumberFormat("en-US").format(n);
 }
 
+// --- 🔍 Récupération & parsing des transactions ---
+async function fetchParsed(address) {
+  // ✅ Conversion string → PublicKey
+  const pubkey = new PublicKey(address);
+
+  const sigs = await conn.getSignaturesForAddress(pubkey, { limit: Number(LOOKBACK_TX) });
+  if (sigs.length === 0) return [];
+
+  const txs = await conn.getParsedTransactions(
+    sigs.map(s => s.signature),
+    { maxSupportedTransactionVersion: 0 }
+  );
+
+  return txs
+    .map((t, i) => ({
+      signature: sigs[i].signature,
+      slot: sigs[i].slot,
+      err: sigs[i].err,
+      tx: t,
+    }))
+    .filter(x => x.tx);
+}
+
+// --- 🧮 Analyse des transferts WDOG / SOL ---
 function scanForSplTransfers(parsedTx, address) {
-  // Retourne deltas WDOG (en unités) et SOL (lamports) pour l'adresse
-  let wdogIn = 0n, wdogOut = 0n;
-  let solIn = 0n, solOut = 0n;
-  let hitBridge = false;
+  let wdogIn = 0n,
+    wdogOut = 0n,
+    solIn = 0n,
+    solOut = 0n,
+    hitBridge = false;
 
   const mintWDOG = WDOG_MINT;
 
-  // 1) Instructions (top + inner)
-  const allInstr = [];
-  if (parsedTx.tx.transaction.message.instructions) allInstr.push(...parsedTx.tx.transaction.message.instructions);
-  if (parsedTx.tx.meta?.innerInstructions) {
-    parsedTx.tx.meta.innerInstructions.forEach(ii => allInstr.push(...ii.instructions));
-  }
+  try {
+    const tokenTransfers = parsedTx.tx.meta?.preTokenBalances || [];
+    const postTokenTransfers = parsedTx.tx.meta?.postTokenBalances || [];
 
-  for (const ix of allInstr) {
-    const program = ix.program || ix.programId || ix.programIdIndex;
-    const parsed = ix.parsed;
-
-    // Native SOL transfer (SystemProgram)
-    if (parsed?.type === 'transfer' && parsed?.info?.lamports) {
-      const src = parsed.info.source;
-      const dst = parsed.info.destination;
-      const lamports = BigInt(parsed.info.lamports);
-      if (src === address) solOut += lamports;
-      if (dst === address) solIn += lamports;
-    }
-
-    // SPL Token transfers
-    if (parsed?.type === 'transferChecked' || parsed?.type === 'transfer') {
-      const info = parsed.info || {};
-      const mint = info.mint;
-      const src = info.source;
-      const dst = info.destination;
-      // amount: string, déjà en unités (pas en décimales)
-      let amt = 0n;
-      if (info.amount !== undefined) {
-        // amount peut parfois être string/number
-        amt = BigInt(String(info.amount));
-      } else if (info.tokenAmount?.amount) {
-        amt = BigInt(String(info.tokenAmount.amount));
-      }
-
-      if (mint === mintWDOG) {
-        if (src === address) wdogOut += amt;
-        if (dst === address) wdogIn += amt;
+    for (const balance of postTokenTransfers) {
+      if (balance.mint === mintWDOG) {
+        if (balance.owner === address) wdogIn += BigInt(balance.uiTokenAmount.amount);
+        else wdogOut += BigInt(balance.uiTokenAmount.amount);
       }
     }
 
-    // Détection simple bridge: si instruction touche une adresse de bridge connue
-    if (!hitBridge && ix.accounts && BRIDGE_ADDRESSES.length) {
-      const accs = ix.accounts.map(a => (typeof a === 'string' ? a : a.toBase58?.() || ''));
-      if (accs.some(a => BRIDGE_ADDRESSES.includes(a))) {
-        hitBridge = true;
-      }
+    const preBalances = parsedTx.tx.meta?.preBalances || [];
+    const postBalances = parsedTx.tx.meta?.postBalances || [];
+
+    for (let i = 0; i < preBalances.length; i++) {
+      const delta = BigInt(postBalances[i]) - BigInt(preBalances[i]);
+      if (delta > 0) solIn += delta;
+      if (delta < 0) solOut += -delta;
     }
+  } catch (err) {
+    console.error("scanForSplTransfers error:", err);
   }
 
   return { wdogIn, wdogOut, solIn, solOut, hitBridge };
 }
 
-async function run() {
-  const watched = Object.entries(WATCH);
-  let alerts = [];
+// --- 🚨 Main watcher ---
+async function main() {
+  console.log("🚀 WDOG Watcher started...");
 
-  for (const [label, addr] of watched) {
-    const list = await fetchParsed(addr);
-    for (const p of list) {
-      const { signature } = p;
-      const { wdogIn, wdogOut, solIn, solOut, hitBridge } = scanForSplTransfers(p, addr);
+  const targetAddress = process.env.TARGET_ADDRESS || "ARu4n5mFdZogZAravu7CcizaojWnS6oqka37gdLT5SZn";
+  const txs = await fetchParsed(targetAddress);
 
-      // Règles d’alerte
-      if (wdogIn >= wd || wdogOut >= wd) {
-        const direction = wdogIn >= wd ? 'IN' : 'OUT';
-        alerts.push(
-          `🐶 <b>WDOG ${direction}</b> on <code>${label}</code> (${short(addr)})\n` +
-          `• Amount: <b>${fmtInt((wdogIn >= wd ? wdogIn : wdogOut).toString())}</b> WDOG\n` +
-          `• Tx: <a href="https://solscan.io/tx/${signature}">${signature.slice(0,12)}…</a>`
-        );
-      }
+  for (const tx of txs) {
+    const { wdogIn, wdogOut, solIn, solOut } = scanForSplTransfers(tx, targetAddress);
 
-      if (solIn >= solMin || solOut >= solMin) {
-        const direction = solIn >= solMin ? 'IN' : 'OUT';
-        alerts.push(
-          `🟡 <b>SOL ${direction}</b> on <code>${label}</code> (${short(addr)})\n` +
-          `• Amount: <b>${fmtLamports(solIn >= solMin ? solIn : solOut).toFixed(2)}</b> SOL\n` +
-          `• Tx: <a href="https://solscan.io/tx/${signature}">${signature.slice(0,12)}…</a>`
-        );
-      }
+    if (wdogOut > BigInt(WDOG_ALERT_MIN)) {
+      const msg = `🐕 *WDOG Outflow Alert*\n\nAddress: [${short(targetAddress)}](https://solscan.io/account/${targetAddress})\nSent: *${fmtInt(Number(wdogOut))} WDOG* 🚨\n\nTx: https://solscan.io/tx/${tx.signature}`;
+      await sendTelegram(msg);
+    }
 
-      if (hitBridge) {
-        alerts.push(
-          `🌉 <b>Bridge interaction</b> on <code>${label}</code> (${short(addr)})\n` +
-          `• Tx: <a href="https://solscan.io/tx/${signature}">${signature.slice(0,12)}…</a>`
-        );
-      }
+    if (wdogIn > BigInt(WDOG_ALERT_MIN)) {
+      const msg = `🐕 *WDOG Inflow Alert*\n\nAddress: [${short(targetAddress)}](https://solscan.io/account/${targetAddress})\nReceived: *${fmtInt(Number(wdogIn))} WDOG* 💰\n\nTx: https://solscan.io/tx/${tx.signature}`;
+      await sendTelegram(msg);
+    }
+
+    if (solOut > BigInt(SOL_ALERT_MIN * 1e9)) {
+      const msg = `💸 *SOL Outflow Alert*\n\nAddress: [${short(targetAddress)}](https://solscan.io/account/${targetAddress})\nSent: *${fmtInt(fmtLamports(solOut))} SOL*\n\nTx: https://solscan.io/tx/${tx.signature}`;
+      await sendTelegram(msg);
     }
   }
 
-  if (alerts.length === 0) {
-    console.log('No alerts this run.');
-    return;
-  }
-
-  // Dédupli simple & envoi
-  const msg = alerts.slice(0, 15).join('\n\n');
-  await sendTelegram(`🔔 <b>WDOG Watch</b>\n${msg}`);
+  console.log("✅ WDOG scan complete.");
 }
 
-run().catch(async (e) => {
-  console.error(e);
-  await sendTelegram(`❌ WDOG Watch error: ${e.message || e.toString()}`);
-  process.exit(1);
-});
+// --- Run ---
+main().catch(e => console.error("❌ WDOG Watch error:", e));
